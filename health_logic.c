@@ -138,18 +138,10 @@ char* calculate_stats_for_range(const char *start_date, const char *end_date) {
         return strdup("Error: Could not open input.txt\n");
     }
 
-    const double STANDARD_HEIGHT = 170.0;
-    const double STANDARD_WEIGHT = 70.0;
-    const double STANDARD_SYS = 120.0;
-    const double STANDARD_DIA = 80.0;
-    const double STANDARD_SUGAR = 100.0;
-    const double STANDARD_TEMP = 37.0;
-
     double height_sum = 0, weight_sum = 0, bp_sys_sum = 0, bp_dia_sum = 0, sugar_sum = 0, temp_sum = 0;
-    double height_sq_sum = 0, weight_sq_sum = 0, bp_sys_sq_sum = 0, bp_dia_sq_sum = 0, sugar_sq_sum = 0, temp_sq_sum = 0;
-    double height_dev_sum = 0, weight_dev_sum = 0, bp_sys_dev_sum = 0, bp_dia_dev_sum = 0, sugar_dev_sum = 0, temp_dev_sum = 0;
     int count = 0;
-
+    
+    // First pass: calculate sums for averages
     char line[256], date[20], height[10], weight[10], bp_sys[10], bp_dia[10], sugar[10], temp[10];
     while (fgets(line, sizeof(line), file)) {
         sscanf(line, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%s", date, height, weight, bp_sys, bp_dia, sugar, temp);
@@ -166,33 +158,13 @@ char* calculate_stats_for_range(const char *start_date, const char *end_date) {
             sugar_sum += s;
             temp_sum += t;
 
-            height_sq_sum += h * h;
-            weight_sq_sum += w * w;
-            bp_sys_sq_sum += bp_s * bp_s;
-            bp_dia_sq_sum += bp_d * bp_d;
-            sugar_sq_sum += s * s;
-            temp_sq_sum += t * t;
-
-            // Calculate deviation from standard values
-            height_dev_sum += (h - STANDARD_HEIGHT) * (h - STANDARD_HEIGHT);
-            weight_dev_sum += (w - STANDARD_WEIGHT) * (w - STANDARD_WEIGHT);
-            bp_sys_dev_sum += (bp_s - STANDARD_SYS) * (bp_s - STANDARD_SYS);
-            bp_dia_dev_sum += (bp_d - STANDARD_DIA) * (bp_d - STANDARD_DIA);
-            sugar_dev_sum += (s - STANDARD_SUGAR) * (s - STANDARD_SUGAR);
-            temp_dev_sum += (t - STANDARD_TEMP) * (t - STANDARD_TEMP);
-
             count++;
         }
     }
 
-    fclose(file);
-
-    char* result = malloc(1536);  // Increased size for formatted output
-    if (!result) return NULL;
-
     if (count == 0) {
-        snprintf(result, 1536, "No data found for the specified range.\n");
-        return result;
+        fclose(file);
+        return strdup("No data found for the specified range.\n");
     }
 
     // Calculate averages
@@ -202,14 +174,42 @@ char* calculate_stats_for_range(const char *start_date, const char *end_date) {
     double bp_dia_avg = bp_dia_sum / count;
     double sugar_avg = sugar_sum / count;
     double temp_avg = temp_sum / count;
+    
+    // Second pass: calculate squared differences from the mean (variance)
+    rewind(file);
+    double height_var_sum = 0, weight_var_sum = 0, bp_sys_var_sum = 0;
+    double bp_dia_var_sum = 0, sugar_var_sum = 0, temp_var_sum = 0;
+    
+    while (fgets(line, sizeof(line), file)) {
+        sscanf(line, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%s", date, height, weight, bp_sys, bp_dia, sugar, temp);
 
-    // Calculate standard deviations from the standard value
-    double height_sd = sqrt(height_dev_sum / count);
-    double weight_sd = sqrt(weight_dev_sum / count);
-    double bp_sys_sd = sqrt(bp_sys_dev_sum / count);
-    double bp_dia_sd = sqrt(bp_dia_dev_sum / count);
-    double sugar_sd = sqrt(sugar_dev_sum / count);
-    double temp_sd = sqrt(temp_dev_sum / count);
+        // Check if the date is within the range
+        if (strcmp(date, start_date) >= 0 && strcmp(date, end_date) <= 0) {
+            double h = atof(height), w = atof(weight), s = atof(sugar), t = atof(temp);
+            double bp_s = atof(bp_sys), bp_d = atof(bp_dia);
+
+            // Calculate squared differences from mean
+            height_var_sum += (h - height_avg) * (h - height_avg);
+            weight_var_sum += (w - weight_avg) * (w - weight_avg);
+            bp_sys_var_sum += (bp_s - bp_sys_avg) * (bp_s - bp_sys_avg);
+            bp_dia_var_sum += (bp_d - bp_dia_avg) * (bp_d - bp_dia_avg);
+            sugar_var_sum += (s - sugar_avg) * (s - sugar_avg);
+            temp_var_sum += (t - temp_avg) * (t - temp_avg);
+        }
+    }
+
+    fclose(file);
+
+    // Calculate standard deviations
+    double height_sd = sqrt(height_var_sum / count);
+    double weight_sd = sqrt(weight_var_sum / count);
+    double bp_sys_sd = sqrt(bp_sys_var_sum / count);
+    double bp_dia_sd = sqrt(bp_dia_var_sum / count);
+    double sugar_sd = sqrt(sugar_var_sum / count);
+    double temp_sd = sqrt(temp_var_sum / count);
+
+    char* result = malloc(1536);  // Increased size for formatted output
+    if (!result) return NULL;
 
     // Get status indicators for average values
     const char *weight_status = get_status_indicator(weight_avg, 18.5, 24.9, 30.0);
@@ -236,8 +236,6 @@ char* calculate_stats_for_range(const char *start_date, const char *end_date) {
         bp_sys_avg, bp_dia_avg, bp_sys_sd, bp_status,
         sugar_avg, sugar_sd, sugar_status,
         temp_avg, temp_sd, temp_status);
-    
-    
 
     return result;
 }
