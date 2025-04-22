@@ -22,18 +22,17 @@ const char* get_status_indicator(double value, double low_threshold, double norm
     else
         return "CAUTION ⚠";
 }
-
-// Helper function to get BP status indicator
 const char* get_bp_status(int systolic, int diastolic) {
-    if (systolic < 90 || diastolic < 60)
-        return "LOW ↓";
-    else if (systolic >= 140 || diastolic >= 90)
+    if (systolic >= 140 || diastolic >= 90)
         return "HIGH ↑";
+    else if (systolic < 90 || diastolic < 60)
+        return "LOW ↓";
     else if (systolic >= 120 || diastolic >= 80)
         return "ELEVATED ⚠";
     else
         return "NORMAL ✓";
 }
+
 
 char* get_comparison_with_previous_day(const char *current_date) {
     FILE *file = fopen("input.txt", "r");
