@@ -11,6 +11,29 @@ void write_data_to_file(const char *date, const char *height, const char *weight
     }
 }
 
+// Helper function to get status indicators for health metrics
+const char* get_status_indicator(double value, double low_threshold, double normal_threshold, double high_threshold) {
+    if (value < low_threshold)
+        return "LOW ↓";
+    else if (value > high_threshold)
+        return "HIGH ↑";
+    else if (value >= low_threshold && value <= normal_threshold)
+        return "NORMAL ✓";
+    else
+        return "CAUTION ⚠";
+}
+
+// Helper function to get BP status indicator
+const char* get_bp_status(int systolic, int diastolic) {
+    if (systolic < 90 || diastolic < 60)
+        return "LOW ↓";
+    else if (systolic >= 140 || diastolic >= 90)
+        return "HIGH ↑";
+    else if (systolic >= 120 || diastolic >= 80)
+        return "ELEVATED ⚠";
+    else
+        return "NORMAL ✓";
+}
 
 char* get_comparison_with_previous_day(const char *current_date) {
     FILE *file = fopen("input.txt", "r");
@@ -50,16 +73,59 @@ char* get_comparison_with_previous_day(const char *current_date) {
     if (!found) {
         snprintf(output, 1024, "No data found for the selected date: %s", current_date);
     } else {
-        snprintf(output, 1024, "Data for %s:\nHeight: %s cm\nWeight: %s kg\nBlood Pressure: %s/%s mmHg\nBlood Sugar: %s mg/dL\nBody Temperature: %s °C\n", 
-                 current_date, height, weight, bp_sys, bp_dia, sugar, temp);
+        // Get status indicators
+        const char *weight_status = get_status_indicator(atof(weight), 18.5, 24.9, 30.0);
+        const char *bp_status = get_bp_status(atoi(bp_sys), atoi(bp_dia));
+        const char *sugar_status = get_status_indicator(atof(sugar), 70.0, 99.0, 126.0);
+        const char *temp_status = get_status_indicator(atof(temp), 36.1, 37.0, 38.0);
+        
+        snprintf(output, 1024, 
+                "HEALTH REPORT DATA\n"
+                "----------------------------\n"
+                "Date: %s\n\n"
+                "Height: %s cm\n"
+                "Weight: %s kg     %s\n"
+                "Blood Pressure: %s/%s mmHg   %s\n"
+                "Blood Sugar: %s mg/dL   %s\n"
+                "Body Temperature: %s °C   %s\n", 
+                current_date, height, weight, weight_status, bp_sys, bp_dia, bp_status, sugar, sugar_status, temp, temp_status);
 
         if (prev_found) {
-            snprintf(output + strlen(output), 1024 - strlen(output),
-                     "\nComparison with Previous Day (%s):\nWeight Change: %.2f kg\nBlood Pressure Change (Sys/Dia): %.2f/%.2f mmHg\nBlood Sugar Change: %.2f mg/dL\n", 
-                     prev_date, atof(weight) - atof(prev_weight), atof(bp_sys) - atof(prev_bp_sys), 
-                     atof(bp_dia) - atof(prev_bp_dia), atof(sugar) - atof(prev_sugar));
+            // Calculate changes
+            double weight_change = atof(weight) - atof(prev_weight);
+            double bp_sys_change = atof(bp_sys) - atof(prev_bp_sys);
+            double bp_dia_change = atof(bp_dia) - atof(prev_bp_dia);
+            double sugar_change = atof(sugar) - atof(prev_sugar);
+            double temp_change = atof(temp) - atof(prev_temp);
+            
+            // Create change indicators
+            const char *weight_change_symbol = (weight_change > 0) ? "↑" : (weight_change < 0) ? "↓" : "→";
+            const char *bp_sys_change_symbol = (bp_sys_change > 0) ? "↑" : (bp_sys_change < 0) ? "↓" : "→";
+            const char *bp_dia_change_symbol = (bp_dia_change > 0) ? "↑" : (bp_dia_change < 0) ? "↓" : "→";
+            const char *sugar_change_symbol = (sugar_change > 0) ? "↑" : (sugar_change < 0) ? "↓" : "→";
+            const char *temp_change_symbol = (temp_change > 0) ? "↑" : (temp_change < 0) ? "↓" : "→";
+            
+            char comparison[1024];
+            snprintf(comparison, sizeof(comparison),
+                    "\n\nCOMPARISON WITH PREVIOUS DAY\n"
+                    "-----------------------------------------\n"
+                    "Previous Date: %s\n\n"
+                    "Weight Change: %s %.2f kg\n" 
+                    "Blood Pressure Change (Systolic): %s %.2f mmHg\n"
+                    "Blood Pressure Change (Diastolic): %s %.2f mmHg\n"
+                    "Blood Sugar Change: %s %.2f mg/dL\n"
+                    "Temperature Change: %s %.2f °C\n",
+                    prev_date,
+                    weight_change_symbol, fabs(weight_change),
+                    bp_sys_change_symbol, fabs(bp_sys_change),
+                    bp_dia_change_symbol, fabs(bp_dia_change),
+                    sugar_change_symbol, fabs(sugar_change),
+                    temp_change_symbol, fabs(temp_change));
+            
+            // Append comparison data to output
+            strcat(output, comparison);
         } else {
-            snprintf(output + strlen(output), 1024 - strlen(output), "\nNo previous day's data available for comparison.\n");
+            strcat(output, "\nNo previous day's data available for comparison.\n");
         }
     }
 
@@ -121,11 +187,11 @@ char* calculate_stats_for_range(const char *start_date, const char *end_date) {
 
     fclose(file);
 
-    char* result = malloc(1024);
+    char* result = malloc(1536);  // Increased size for formatted output
     if (!result) return NULL;
 
     if (count == 0) {
-        snprintf(result, 1024, "No data found for the specified range.\n");
+        snprintf(result, 1536, "No data found for the specified range.\n");
         return result;
     }
 
@@ -145,18 +211,33 @@ char* calculate_stats_for_range(const char *start_date, const char *end_date) {
     double sugar_sd = sqrt(sugar_dev_sum / count);
     double temp_sd = sqrt(temp_dev_sum / count);
 
-    // Prepare the result text
-    snprintf(result, 1024, "Stats from %s to %s:\n"
-                          "Height - Avg: %.2f, SD: %.2f\n"
-                          "Weight - Avg: %.2f, SD: %.2f\n"
-                          "Blood Pressure (Sys) - Avg: %.2f, SD: %.2f\n"
-                          "Blood Pressure (Dia) - Avg: %.2f, SD: %.2f\n"
-                          "Blood Sugar - Avg: %.2f, SD: %.2f\n"
-                          "Body Temperature - Avg: %.2f, SD: %.2f\n",
-                          start_date, end_date, height_avg, height_sd,
-                          weight_avg, weight_sd, bp_sys_avg, bp_sys_sd,
-                          bp_dia_avg, bp_dia_sd, sugar_avg, sugar_sd,
-                          temp_avg, temp_sd);
+    // Get status indicators for average values
+    const char *weight_status = get_status_indicator(weight_avg, 18.5, 24.9, 30.0);
+    const char *bp_status = get_bp_status((int)bp_sys_avg, (int)bp_dia_avg);
+    const char *sugar_status = get_status_indicator(sugar_avg, 70.0, 99.0, 126.0);
+    const char *temp_status = get_status_indicator(temp_avg, 36.1, 37.0, 38.0);
+
+    // Prepare the result text with precise column alignment
+    snprintf(result, 1536,
+        "HEALTH STATISTICS REPORT\n"
+        "--------------------------------\n"
+        "Period: %s to %s\n"
+        "Total Readings: %d\n\n"
+        "METRIC                          AVERAGE              SD          STATUS\n"
+        "--------------------------------------------------------------------\n"
+        "Height (cm)             %17.2f    %13.2f\n"
+        "Weight (kg)             %16.2f    %15.2f   %15s\n"
+        "Blood Pressure (mmHg)   %-0.0f/%-0.0f   %10.2f   %15s\n"
+        "Blood Sugar (mg/dL)     %9.2f    %13.2f   %14s\n"
+        "Temperature (°C)        %12.2f    %14.2f   %15s\n",
+        start_date, end_date, count,
+        height_avg, height_sd,
+        weight_avg, weight_sd, weight_status,
+        bp_sys_avg, bp_dia_avg, bp_sys_sd, bp_status,
+        sugar_avg, sugar_sd, sugar_status,
+        temp_avg, temp_sd, temp_status);
+    
+    
 
     return result;
 }
@@ -205,51 +286,72 @@ char* get_advice_based_on_abnormalities(int abnormal_weight, int abnormal_bp,
     char* advice = malloc(2048);
     if (!advice) return NULL;
     
-    strcpy(advice, "Abnormalities Count and Advice:\n\n");
+    strcpy(advice, "HEALTH ABNORMALITIES AND ADVICE\n"
+                  "---------------------------------------------\n\n");
     
-    // Add the type-wise abnormalities count
-    char count_buffer[50];
+    // Add the type-wise abnormalities count with icons
+    char count_buffer[256];
     
-    sprintf(count_buffer, "Weight Abnormalities: %d\n", abnormal_weight);
+    sprintf(count_buffer, "Weight Abnormalities: %d %s\n", 
+            abnormal_weight, (abnormal_weight > 0) ? "⚠️" : "✓");
     strcat(advice, count_buffer);
     
-    sprintf(count_buffer, "Blood Pressure Abnormalities: %d\n", abnormal_bp);
+    sprintf(count_buffer, "Blood Pressure Abnormalities: %d %s\n", 
+            abnormal_bp, (abnormal_bp > 0) ? "⚠️" : "✓");
     strcat(advice, count_buffer);
     
-    sprintf(count_buffer, "Blood Sugar Abnormalities: %d\n", abnormal_sugar);
+    sprintf(count_buffer, "Blood Sugar Abnormalities: %d %s\n", 
+            abnormal_sugar, (abnormal_sugar > 0) ? "⚠️" : "✓");
     strcat(advice, count_buffer);
     
-    sprintf(count_buffer, "Temperature Abnormalities: %d\n\n", abnormal_temp);
+    sprintf(count_buffer, "Temperature Abnormalities: %d %s\n\n", 
+            abnormal_temp, (abnormal_temp > 0) ? "⚠️" : "✓");
     strcat(advice, count_buffer);
+    
+    strcat(advice, "RECOMMENDATIONS\n"
+                  "--------------------------\n\n");
     
     // Provide advice based on abnormalities
     if (abnormal_weight > 0) {
         strcat(advice, 
-               " - Consider tracking your diet and exercise to maintain a\n"
-               "   healthy weight.\n");
-    }
-    if (abnormal_bp > 0) {
-        strcat(advice, 
-               " - High blood pressure may require lifestyle changes,\n"
-               "   medication, or further monitoring. Please consult a\n"
-               "   healthcare professional.\n");
-    }
-    if (abnormal_sugar > 0) {
-        strcat(advice, 
-               " - Abnormal blood sugar levels may indicate the need for\n"
-               "   diet changes or medication. Please consult a healthcare\n"
-               "   provider for proper testing.\n");
-    }
-    if (abnormal_temp > 0) {
-        strcat(advice, 
-               " - Abnormal body temperature could be a sign of infection\n"
-               "   or illness. Consult a healthcare provider for diagnosis\n"
-               "   and treatment.\n");
+               "⚖️ WEIGHT:\n"
+               "• Consider tracking your diet and exercise\n"
+               "• Maintain a balanced diet with proper nutrition\n"
+               "• Consult with a nutritionist if needed\n\n");
     }
     
+    if (abnormal_bp > 0) {
+        strcat(advice, 
+               "💓 BLOOD PRESSURE:\n"
+               "• Reduce sodium intake and stress levels\n"
+               "• Regular physical activity is recommended\n"
+               "• Consult with healthcare professional for advice\n\n");
+    }
+    
+    if (abnormal_sugar > 0) {
+        strcat(advice, 
+               "🍬 BLOOD SUGAR:\n"
+               "• Monitor carbohydrate intake carefully\n"
+               "• Regular meals and exercise help maintain levels\n"
+               "• Follow-up with healthcare provider for testing\n\n");
+    }
+    
+    if (abnormal_temp > 0) {
+        strcat(advice, 
+               "🌡️ BODY TEMPERATURE:\n"
+               "• Rest and stay hydrated\n"
+               "• Monitor for additional symptoms\n"
+               "• Seek medical attention if temperature persists\n\n");
+    }
+    
+    if (abnormal_weight == 0 && abnormal_bp == 0 && 
+        abnormal_sugar == 0 && abnormal_temp == 0) {
+        strcat(advice,
+               "✅ ALL METRICS NORMAL:\n"
+               "• Continue maintaining your healthy lifestyle\n"
+               "• Regular check-ups are still recommended\n"
+               "• Keep monitoring your health parameters\n\n");
+    }
+
     return advice;
 }
-
-
-// cd "D:\VS STUDIO\HealthAnalyzer" ; gcc health_logic.c health_ui.c -o health_analyzer $(pkg-config --cflags --libs gtk+-3.0)
-// ./health_analyzer
