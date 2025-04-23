@@ -73,7 +73,7 @@ char* get_comparison_with_previous_day(const char *current_date) {
         snprintf(output, 1024, "No data found for the selected date: %s", current_date);
     } else {
         // Get status indicators
-        const char *weight_status = get_status_indicator(atof(weight), 18.5, 24.9, 30.0);
+        const char *weight_status = get_status_indicator(atof(weight), 30, 55, 65);
         const char *bp_status = get_bp_status(atoi(bp_sys), atoi(bp_dia));
         const char *sugar_status = get_status_indicator(atof(sugar), 70.0, 99.0, 126.0);
         const char *temp_status = get_status_indicator(atof(temp), 36.1, 37.0, 38.0);
